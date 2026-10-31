@@ -3,6 +3,8 @@
 
 # Secrets (commit .env.example instead)
 .env
+google_credentials.json
+google_token.json
 
 # Run traces
 runs/

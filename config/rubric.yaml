@@ -1,0 +1,52 @@
+# Rubric for stage 5 (evaluator).
+#
+# Code checks (R1-R4) run first, then one model grader scores the rest. The grader
+# uses a different model from the generators (models.evaluator in settings.yaml).
+# When a criterion fails, its feedback goes only to the stage that owns it:
+#   research (the biography), orchestrator (theory and briefs), pro, con,
+#   panel (the judges) or aggregator (the verdict).
+
+pass_score: 4     # model-graded criteria are scored 1-5 and pass at 4 or more
+spot_checks: 4    # cited pages the evaluator fetches again to check R5
+
+criteria:
+  R1:
+    name: Complete
+    check: code
+    passes_when: All six sections present; output matches schema
+  R2:
+    name: Sourced
+    check: code
+    passes_when: Every factual claim has at least 1 citation
+  R3:
+    name: Allowed sources
+    check: code
+    passes_when: Every citation is on the route's allowlist
+  R4:
+    name: Length
+    check: code
+    passes_when: Life at most 200 words; each argument at most 250; verdict at most 200
+    limits:
+      life: 200
+      argument: 250
+      verdict: 200
+  R5:
+    name: Faithful
+    check: model
+    passes_when: Cited pages actually support the claims (spot-checked by fetching)
+    send_to: [research, pro, con]
+  R6:
+    name: Steelmanned
+    check: model
+    passes_when: Both arguments are the strongest available versions and target the same theory
+    send_to: [pro, con]
+  R7:
+    name: Balanced
+    check: model
+    passes_when: Comparable depth; neither side is a strawman
+    send_to: [orchestrator]
+  R8:
+    name: Justified verdict
+    check: model
+    passes_when: Verdict follows from the panel scores, engages both arguments, avoids unsupported superlatives
+    send_to: [aggregator]

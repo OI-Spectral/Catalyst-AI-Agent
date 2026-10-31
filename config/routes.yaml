@@ -1,0 +1,123 @@
+# Routes for stage 2 (router + research agent).
+#
+# The router model returns a tradition label and a confidence score.
+# Code looks the label up here. If the label is missing, or confidence is
+# below min_confidence, the run uses the fallback route instead.
+#
+# Each route has:
+#   description   what the route covers (can be shown to the router model)
+#   examples      typical philosophers for this route
+#   model         the Claude model the research agent uses
+#   allowlist     the only domains fetch_page may open (enforced in code)
+#   prompt        the specialised research instructions
+#
+# search covers plato.stanford.edu, iep.utm.edu, en.wikipedia.org and en.wikisource.org;
+# other allowed sites can only be read at a URL the agent already knows.
+# Not used, because they refuse automated reading: www.britannica.com (403) and ctext.org (Cloudflare check).
+
+min_confidence: 0.7
+fallback: general
+
+routes:
+  ancient:
+    description: Greek, Hellenistic and Roman philosophy
+    examples: [Heraclitus, Plato, Seneca]
+    model: claude-sonnet-5-5
+    allowlist:
+      - plato.stanford.edu        # Stanford Encyclopedia of Philosophy
+      - iep.utm.edu               # Internet Encyclopedia of Philosophy
+      - www.perseus.tufts.edu     # Perseus Digital Library
+    prompt: >
+      Many ancient texts survive only as fragments or as reports by later
+      writers. Separate what the thinker wrote from what others said about
+      them, and say which one each claim relies on.
+
+  medieval:
+    description: Medieval Christian, Islamic and Jewish philosophy
+    examples: [Aquinas, Avicenna, Maimonides]
+    model: claude-sonnet-5-5
+    allowlist:
+      - plato.stanford.edu
+      - iep.utm.edu
+      - en.wikipedia.org
+    prompt: >
+      Place the thinker in their theological context, whether Christian,
+      Islamic or Jewish. Explain which religious questions their philosophy
+      was answering.
+
+  early_modern:
+    description: European philosophy from roughly 1600 to 1800
+    examples: [Descartes, Hume, Kant]
+    model: claude-sonnet-5-5
+    allowlist:
+      - plato.stanford.edu
+      - iep.utm.edu
+      - www.earlymoderntexts.com  # Early Modern Texts
+    prompt: >
+      Frame the thinker within the rationalist and empiricist debates of the
+      period. Prefer the primary texts, and cite the work each idea comes from.
+
+  continental:
+    description: 19th and 20th century European philosophy
+    examples: [Hegel, Nietzsche, Beauvoir]
+    model: claude-sonnet-5-5
+    allowlist:
+      - plato.stanford.edu
+      - iep.utm.edu
+    prompt: >
+      Interpretations of these thinkers are often contested. When scholars
+      disagree about what a text means, say so and name the main readings
+      rather than presenting one as settled.
+
+  analytic:
+    description: 20th and 21st century analytic philosophy
+    examples: [Russell, Wittgenstein, Rawls]
+    model: claude-sonnet-5-5
+    allowlist:
+      - plato.stanford.edu
+      - iep.utm.edu
+      - philpapers.org            # PhilPapers
+    prompt: >
+      State arguments precisely, as premises and conclusion where possible.
+      Use the current literature to show where the debate stands today.
+
+  non_western:
+    description: Chinese, Indian, African and other non-Western traditions
+    examples: [Confucius, Zhuangzi, Nagarjuna, Zera Yacob, Kwasi Wiredu]
+    model: claude-sonnet-5-5
+    allowlist:
+      - plato.stanford.edu
+      - iep.utm.edu
+      - en.wikipedia.org          # its own page for many thinkers the encyclopedias cover only in surveys
+      - en.wikisource.org         # primary texts in translation, e.g. Legge's Chinese Classics
+    prompt: >
+      Use the tradition's own terms and explain them. Don't force the ideas
+      into Western categories, and say when a Western comparison is only
+      approximate.
+
+      African philosophers often have no encyclopedia entry of their own.
+      Search for the survey entries that discuss them (the Stanford
+      Encyclopedia's Africana Philosophy, Contemporary Africana Philosophy,
+      African Ethics and African Sage Philosophy; the Internet Encyclopedia's
+      History of African Philosophy and African Philosophy), then fetch them
+      with find set to the person's name. Their Wikipedia page fills in the
+      biography. Say when a work's authorship or dating is disputed, and when
+      a view reaches us through oral tradition or later reports.
+
+      Chinese philosophers usually have entries of their own in both
+      encyclopedias. Give key terms in pinyin with a translation (ren,
+      benevolence), and quote the primary texts from Wikisource where they
+      support a claim. Note when a text attributed to a thinker was compiled
+      by their later followers.
+
+  general:
+    description: Low-confidence fallback when the tradition is unclear
+    examples: []
+    model: claude-sonnet-5-5
+    allowlist:
+      - plato.stanford.edu
+      - iep.utm.edu
+      - en.wikipedia.org
+    prompt: >
+      The thinker's tradition is uncertain. Stay broad and conservative:
+      stick to claims the sources state clearly, and flag anything disputed.

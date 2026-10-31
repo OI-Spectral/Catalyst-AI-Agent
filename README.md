@@ -6,12 +6,14 @@
 Built for Workshop 2 of **Y/CS Catalyst**, *Building Effective Agent Systems*.
 
 ```bash
-python -m philosopher_agent "Immanuel Kant"
+python CLI.py "Immanuel Kant"
 ```
 
 ---
 
 ## What you get back
+
+Every report is a Google Doc laid out like a Stanford Encyclopedia of Philosophy entry: a title and contents list, numbered sections, and superscript source numbers that link to the pages they come from. The doc holds only the essay and its sources. The run notes (route, rubric scores, warnings, cost) stay in the terminal.
 
 Every report has six sections:
 
@@ -103,9 +105,9 @@ Each stage uses one of the patterns from the workshop. The rule throughout: **gi
 
 Checks that the input is a real philosopher before anything expensive runs. Three checks, cheapest first:
 
-1. **Sanitise (code).** Trim, cap at 80 characters, allow only letters, spaces and `.'-`. Rejects empty input and pasted instructions before any model sees them.
-2. **Look up (code).** Search Wikidata for the name and check whether its occupation (`P106`) includes *philosopher* (`Q4964182`), and/or whether the Stanford or Internet Encyclopedia of Philosophy has an entry.
-3. **Judge (small model).** Only for borderline cases, such as a scientist, theologian or writer with philosophical work. Returns a decision, a reason, and the canonical name.
+1. **Sanitise (code).** Trim, allow only letters, plain spaces and `.'-`, and cap at 80 characters and 6 words. Rejects empty input and pasted instructions before any model sees them.
+2. **Look up (code).** Search Wikidata for the name and check whether its occupation (`P106`) includes *philosopher* (`Q4964182`). If nothing matches, check whether the Stanford or Internet Encyclopedia of Philosophy has an entry on them. One exact match that Wikidata describes as a philosopher is accepted here, with no model call.
+3. **Judge (Opus).** Everything else: misspellings, several candidates, and borderline cases such as a scientist, theologian or writer with philosophical work. Returns a decision, a reason, the canonical name and, when the name is ambiguous, the options to pick from.
 
 | Outcome | Example input | Result |
 |---------|---------------|--------|
@@ -126,12 +128,14 @@ Code maps that to a route in `config/routes.yaml`. Each route is a specialised r
 | Route | Typical philosophers | Allowed sources | Prompt focus |
 |-------|----------------------|-----------------|--------------|
 | `ancient` | Heraclitus, Plato, Seneca | SEP, IEP, Perseus Digital Library | Fragmentary texts; separate the thinker from later reports |
-| `medieval` | Aquinas, Avicenna, Maimonides | SEP, IEP, Britannica | Theological context across Christian, Islamic and Jewish traditions |
+| `medieval` | Aquinas, Avicenna, Maimonides | SEP, IEP, Wikipedia | Theological context across Christian, Islamic and Jewish traditions |
 | `early_modern` | Descartes, Hume, Kant | SEP, IEP, Early Modern Texts | Rationalist/empiricist debates; primary texts |
 | `continental` | Hegel, Nietzsche, Beauvoir | SEP, IEP | Contested interpretations; flag disputed readings |
 | `analytic` | Russell, Wittgenstein, Rawls | SEP, IEP, PhilPapers | Precise argument structure; current literature |
-| `non_western` | Confucius, Nagarjuna, Zera Yacob | SEP, IEP, Chinese Text Project | Use the tradition's own terms; don't force Western categories |
-| `general` | Low-confidence fallback | SEP, IEP, Wikipedia, Britannica | Broad, conservative |
+| `non_western` | Confucius, Zhuangzi, Nagarjuna, Zera Yacob, Kwasi Wiredu | SEP, IEP, Wikipedia, Wikisource | Use the tradition's own terms; reach African thinkers through survey entries and Wikipedia; quote Chinese primary texts |
+| `general` | Low-confidence fallback | SEP, IEP, Wikipedia | Broad, conservative |
+
+Search covers SEP, IEP, Wikipedia and Wikisource. The other allowed sites can only be read at a URL the agent already knows. Britannica and the Chinese Text Project block automated reading (one returns a 403, the other a Cloudflare check), so no route uses them.
 
 The **research agent** for the chosen route is a single agent with two tools, `search(query)` and `fetch_page(url)`. `fetch_page` refuses any URL outside the route's allowlist; this is enforced in code, not in the prompt. It returns a dossier: a short biography, a candidate "most famous theory" with the reason it was picked, and every fact as an evidence-backed finding:
 
@@ -194,8 +198,11 @@ When a criterion fails, feedback goes **only to the stage that owns it**. A weak
 - 3 revision rounds used
 - no score improved since the last round
 - spend cap reached
+- run time limit reached
 
-If the run stops without passing, the report still ships, with a warning that names the failed criteria.
+If the run stops without passing, the report still ships, with a warning that names the failed criteria. The report that ships is the best-graded one, so a revision can't make it worse.
+
+An R5 (faithful) failure sent to the research agent discounts every finding the spot checks showed its own page doesn't support, then rewrites the biography from what is left. If the spend cap or the time limit is reached before the report is complete, the sections finished so far ship, ungraded, with a warning.
 
 ---
 
@@ -222,13 +229,15 @@ These live in code, never only in the prompt.
 
 | Control | Default | Setting |
 |---------|---------|---------|
-| Tool calls per agent | 15 | `MAX_TOOL_CALLS` |
-| Timeout per tool call / per run | 30 s / 5 min | `TOOL_TIMEOUT_S`, `RUN_TIMEOUT_S` |
+| Tool calls per agent | 15 for research; 12 per worker, from its brief | `MAX_TOOL_CALLS`; `worker_max_tool_calls` in `settings.yaml` |
+| Timeout per tool call / per run | 30 s / 15 min | `TOOL_TIMEOUT_S`, `RUN_TIMEOUT_S` |
 | Retries on transient errors | 2, with backoff | `MAX_RETRIES` |
 | Revision rounds | 3 | `MAX_REVISIONS` |
-| Spend cap per run | $0.50 | `MAX_RUN_COST_USD` |
+| Spend cap per run | $5.00 | `MAX_RUN_COST_USD` |
 | Permissions | Read-only: `search` and `fetch_page` only | — |
 | Source allowlist | Per route, checked inside `fetch_page` | `config/routes.yaml` |
+
+The spend cap is checked before every model call: a call is refused if the most any call at that stage has cost so far would take the run past the cap. A revision round only starts if its estimated cost fits in what is left. No model call may run more than a minute past the time limit. Once the limit passes, agents answer from what they have read and no new stage or revision starts. The pro and con workers each get a share of the cap (`budget_shares` in `settings.yaml`), and so does the research agent.
 
 **Untrusted input.** The user's text and every fetched page are treated as data, never as instructions. The gate sanitises input; fetched text is stripped of scripts and HTML comments and wrapped in `<retrieved_document>` tags; prompts state that content inside those tags is material to analyse. The eval set includes a prompt-injection case.
 
@@ -240,12 +249,12 @@ The agent has no write tools and takes no external actions, so there is no human
 
 ### Eval set
 
-`evals/cases.jsonl` holds about 20 cases, with hard and weird ones on purpose:
+`evals/cases.jsonl` holds 22 cases, with hard and weird ones on purpose:
 
 | Category | Examples | What it tests |
 |----------|----------|---------------|
 | Canonical | Plato, Kant, Confucius | Full report passes the rubric |
-| Under-covered traditions | Nagarjuna, Zera Yacob, Al-Ghazali | Routing and source depth |
+| Under-covered traditions | Nagarjuna, Zera Yacob, Kwasi Wiredu, Mozi, Al-Ghazali | Routing and source depth |
 | Living | Peter Singer, Martha Nussbaum | No invented biography details |
 | Misspelled | `Nitzsche`, `Decartes` | Gate corrects the name |
 | Ambiguous | `Smith`, `Bacon` | Gate asks instead of guessing |
@@ -259,7 +268,7 @@ The agent has no write tools and takes no external actions, so there is no human
 
 ### Traces
 
-Every run writes `runs/<run_id>/run_state.json` (goal, task progress, decisions, findings) plus a log of each model and tool call with inputs, outputs, tokens and cost.
+Every run writes `runs/<run_id>/run_state.json` with the goal, task progress, decisions and findings, and one line per model and tool call with its tokens, cost and time. It also writes the finished `report.json`. With `--trace`, `trace.jsonl` also records each call's inputs and outputs.
 
 ### Baseline comparison
 
@@ -267,55 +276,64 @@ The baseline is a single well-prompted call that writes the whole report. The pi
 
 | | Baseline (one call) | Full pipeline |
 |---|---|---|
-| Rubric pass rate | – / 20 | – / 20 |
-| Citations that support their claim | – | – |
-| Cost per run | – | – |
-| Latency | – | – |
+| Rubric pass rate | 0 / 17 | 8 / 17 |
+| Citations that support their claim | 29% (15 / 52) | 62% (42 / 68) |
+| Cost per run | $0.03 | $0.62 |
+| Latency | 23 s | 146 s |
 
-*Fill in after running `python evals/run_evals.py --compare baseline`. Spot-check five reports by hand to calibrate the model grader.*
+*From `python evals/run_evals.py --compare baseline --jobs 4` on 30 October 2026, with the default $5.00 spend cap and 15-minute limit.*
+
+- **Which cases:** the 17 the gate accepts. The other five stop at the gate, as expected; across all 22 cases the gate, the name correction and the route were each right every time (22/22, 15/15, 15/15).
+- **Supported citations:** the evaluator's spot checks where the page it fetched fully supports the claim.
+- **Cost:** the baseline's leaves out the gate and the grader; the pipeline's includes both.
+- **Most common failure:** R5 (faithful), in 8 of the 9 reports that didn't pass. Most of those stopped after one revision because no score improved.
+
+Spot-check five reports by hand, in `runs/<run_id>/report.json`, to calibrate the model grader.
 
 ---
 
 ## Project structure
 
 ```text
-philosopher-agent/
+Catalyst-AI-Agent/
 ├── README.md
 ├── requirements.txt
 ├── .env.example
+├── CLI.py                      # command line entry point
 ├── app.py                      # Streamlit demo
 ├── config/
 │   ├── routes.yaml             # route → prompt, allowlist, model
 │   ├── rubric.yaml             # evaluator criteria and thresholds
-│   └── settings.yaml           # limits, weights, model choices
-├── src/philosopher_agent/
-│   ├── __main__.py             # CLI entry point
-│   ├── pipeline.py             # runs the stages, enforces limits
-│   ├── gate.py                 # 1. validity gate
-│   ├── router.py               # 2. router
-│   ├── research.py             # 2. research agent
-│   ├── orchestrator.py         # 3. orchestrator + briefs
-│   ├── workers.py              # 3. pro / con workers
-│   ├── panel.py                # 4. judges + aggregator
-│   ├── evaluator.py            # 5. evaluator loop
-│   ├── schemas.py              # Pydantic models for every stage's output
-│   ├── state.py                # run_state.json + trace logging
-│   ├── tools/
-│   │   ├── search.py
-│   │   └── fetch.py            # allowlist enforced here
-│   └── prompts/                # one file per stage and route
+│   └── settings.yaml           # models, panel weights, budget shares
+├── pipeline.py                 # runs the stages, enforces limits
+├── validity_gate.py            # 1. validity gate
+├── router.py                   # 2. router
+├── research.py                 # 2. research agent
+├── agent.py                    #    the tool loop the research agent and workers share
+├── tools.py                    #    search and fetch_page (allowlist enforced here)
+├── orchestrator.py             # 3. orchestrator + briefs
+├── workers.py                  # 3. pro / con workers
+├── panel.py                    # 4. judges + aggregator
+├── evaluator.py                # 5. evaluator loop
+├── report.py                   # report schema, assembly, Markdown and the run notes
+├── google_doc.py               # the report as a Google Doc, styled like an SEP entry
+├── baseline.py                 # the one-call baseline
+├── state.py                    # run_state.json, trace logging, spend cap and time limit
+├── llm.py, costs.py, settings.py
 ├── evals/
 │   ├── cases.jsonl
 │   └── run_evals.py
 ├── runs/                       # traces (gitignored)
-└── tests/
+└── tests/                      # offline tests, no API calls
 ```
+
+Each stage's output shape is a JSON schema next to the code that uses it, and its prompt is written there too.
 
 ---
 
 ## Getting started
 
-**Requirements:** Python 3.11+, an Anthropic API key, and a key for your search provider.
+**Requirements:** Python 3.9+ and an Anthropic API key. The default search needs no key; Tavily or Brave need one.
 
 ```bash
 git clone https://github.com/<your-username>/philosopher-agent.git
@@ -329,39 +347,69 @@ Fill in `.env`:
 
 ```bash
 ANTHROPIC_API_KEY=
-SEARCH_PROVIDER=tavily        # tavily | brave
+SEARCH_PROVIDER=free
 SEARCH_API_KEY=
-MAX_RUN_COST_USD=0.50
+MAX_RUN_COST_USD=5.00
 ```
+
+`SEARCH_PROVIDER` is `free` (SEP, IEP, Wikipedia and Wikisource, no key), `tavily` or `brave`. `SEARCH_API_KEY` is only needed for the last two. `CLI.py`, `app.py` and `evals/run_evals.py` read `.env` themselves.
 
 Models are set per stage in `config/settings.yaml`:
 
 ```yaml
 models:
+  gate: claude-opus-5-5         # the validity gate's judge, for borderline names
   router: claude-haiku-5-5      # small and fast for classification
-  research: claude-sonnet-5-5
+  orchestrator: claude-sonnet-5-5
   workers: claude-sonnet-5-5
   judges: claude-sonnet-5-5
+  aggregator: claude-sonnet-5-5 # writes the verdict
   evaluator: claude-opus-5-5    # different model from the generators
+  baseline: claude-sonnet-5-5
 ```
+
+The research model is set per route in `config/routes.yaml`.
+
+### Google Docs output
+
+The report is written to a new Google Doc in your Drive. Setting this up takes a few minutes, once:
+
+1. In the [Google Cloud console](https://console.cloud.google.com), create a project and enable the **Google Docs API**.
+2. Under **Google Auth Platform** (formerly the OAuth consent screen), set the audience to External and add your own Google account as a test user.
+3. Under **Clients**, create an OAuth client of type **Desktop app**. Download its JSON and save it as `google_credentials.json` in the project folder.
+4. Run `python CLI.py "Immanuel Kant"`. The first time, a browser asks you to allow access. The permission is `drive.file`: the app can create and edit only the documents it makes, and can't see anything else in your Drive. Your sign-in is saved to `google_token.json`.
+
+Both files are gitignored; never commit them. Until this is set up, or with `--no-doc`, the essay prints in the terminal instead. In the Streamlit demo, **Save as a Google Doc** does the same.
 
 ### Usage
 
 ```bash
-# Readable report in the terminal
-python -m philosopher_agent "Immanuel Kant"
+# The report as a Google Doc, with the run notes in the terminal
+python CLI.py "Immanuel Kant"
+
+# The report in the terminal instead
+python CLI.py "Immanuel Kant" --no-doc
 
 # Structured JSON
-python -m philosopher_agent "Simone de Beauvoir" --json > beauvoir.json
+python CLI.py "Simone de Beauvoir" --json > beauvoir.json
 
 # Save the full trace to runs/
-python -m philosopher_agent "Nagarjuna" --trace
+python CLI.py "Nagarjuna" --trace
+
+# Head-to-head: two philosophers on the same criteria
+python CLI.py "Immanuel Kant" --versus "David Hume"
 
 # Web demo
 streamlit run app.py
 
-# Run the eval set against the baseline
-python evals/run_evals.py --compare baseline
+# Run the eval set against the baseline (four cases at a time)
+python evals/run_evals.py --compare baseline --jobs 4
+
+# Check just the gate and router, for a few cents
+python evals/run_evals.py --stage route
+
+# Offline tests, no API calls
+python -m unittest
 ```
 
 ---
@@ -380,40 +428,40 @@ python evals/run_evals.py --compare baseline
 
 ## Limitations
 
-- **Coverage bias.** Encyclopedias cover the Western canon in more depth, so some traditions get thinner dossiers. The eval set includes them to measure the gap.
+- **Coverage bias.** Encyclopedias cover the Western canon in more depth, so some traditions get thinner dossiers. African philosophers are hit hardest: SEP and IEP usually discuss them only inside survey entries, which is why the `non_western` route adds Wikipedia, and Wikisource for primary texts. The eval set includes them to measure the gap.
 - **"Most famous" is contestable.** Early or late Wittgenstein? The report states why it picked the theory it did.
 - **The verdict is a structured opinion.** The criterion weights encode one view of what makes philosophy good. Change them in `settings.yaml` and the verdict changes.
 - **Graders can share blind spots.** A model grader may miss errors the generator makes; human spot-checks calibrate it.
-- **Cost.** A full run makes many more calls than the baseline. The evaluation table shows whether that pays off.
+- **Cost.** A full run makes many more calls than the baseline: in the eval it cost about 19 times as much and took 6 times as long. For that, 8 more of 17 reports passed the rubric, and twice the share of citations checked out.
 
 ---
 
 ## Roadmap
 
 **Week 1**
-- [ ] Baseline: one prompt that writes the whole report
-- [ ] First 10 eval cases with expected gate and route outcomes
-- [ ] Validity gate: sanitise → lookup → model for borderline cases
-- [ ] Router, `routes.yaml`, research agent with allowlisted `fetch_page`
-- [ ] Trace logging to `runs/`
+- [x] Baseline: one prompt that writes the whole report
+- [x] First 10 eval cases with expected gate and route outcomes
+- [x] Validity gate: sanitise → lookup → model for borderline cases
+- [x] Router, `routes.yaml`, research agent with allowlisted `fetch_page`
+- [x] Trace logging to `runs/`
 
 **Week 2**
-- [ ] Orchestrator, briefs, and pro/con workers with JSON schemas
-- [ ] Judging panel and aggregator
-- [ ] Evaluator loop with stop rules
-- [ ] Streamlit demo
-- [ ] Expand to 20 eval cases, run against baseline, fill in results
+- [x] Orchestrator, briefs, and pro/con workers with JSON schemas
+- [x] Judging panel and aggregator
+- [x] Evaluator loop with stop rules
+- [x] Streamlit demo
+- [x] Expand to 20 eval cases, run against baseline, fill in results
 
 **Stretch**
-- [ ] Voting: run each judge three times and take the median
-- [ ] Cache dossiers for repeat lookups
-- [ ] Head-to-head mode: compare two philosophers on the same criteria
+- [x] Voting: run each judge three times and take the median (`judge_votes: 3` in `settings.yaml`)
+- [x] Cache dossiers for repeat lookups (`cache_dossiers: true` in `settings.yaml`)
+- [x] Head-to-head mode: compare two philosophers on the same criteria (`--versus`)
 
 ---
 
 ## Acknowledgements
 
-Sources: the [Stanford Encyclopedia of Philosophy](https://plato.stanford.edu), the [Internet Encyclopedia of Philosophy](https://iep.utm.edu), [PhilPapers](https://philpapers.org), the [Perseus Digital Library](https://www.perseus.tufts.edu), [Early Modern Texts](https://www.earlymoderntexts.com), the [Chinese Text Project](https://ctext.org) and [Wikidata](https://www.wikidata.org).
+Sources: the [Stanford Encyclopedia of Philosophy](https://plato.stanford.edu), the [Internet Encyclopedia of Philosophy](https://iep.utm.edu), [PhilPapers](https://philpapers.org), the [Perseus Digital Library](https://www.perseus.tufts.edu), [Early Modern Texts](https://www.earlymoderntexts.com), [Wikipedia](https://en.wikipedia.org), [Wikisource](https://en.wikisource.org) and [Wikidata](https://www.wikidata.org).
 
 Architecture patterns from Y/CS Catalyst Workshop 2 and Anthropic's *Building effective agents*.
 
