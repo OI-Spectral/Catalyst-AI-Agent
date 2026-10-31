@@ -1,0 +1,45 @@
+# Model choices, panel weights and budget shares for every stage.
+#
+# The research model is set per route in routes.yaml. Guardrail limits (tool calls,
+# timeouts, retries, revision rounds, spend cap) are environment variables: see .env.example.
+
+models:
+  gate: claude-opus-5-5           # the validity gate's judge, for borderline names
+  router: claude-haiku-5-5        # small and fast for classification
+  orchestrator: claude-sonnet-5-5
+  workers: claude-sonnet-5-5
+  judges: claude-sonnet-5-5
+  aggregator: claude-sonnet-5-5   # writes the verdict
+  evaluator: claude-opus-5-5      # different model from the generators
+  baseline: claude-sonnet-5-5     # the single call the pipeline is compared against
+
+# Judging panel: each criterion's weight and the question its judge answers.
+# The weights must add up to 1. Change them and the verdict changes.
+criteria:
+  originality:
+    weight: 0.25
+    question: How new was the idea when it appeared?
+  influence:
+    weight: 0.25
+    question: How much did it shape later philosophy?
+  rigour:
+    weight: 0.20
+    question: How coherent and well-argued is it?
+  resilience:
+    weight: 0.20
+    question: How well does it survive the con argument?
+  relevance:
+    weight: 0.10
+    question: Does it still matter in current debates?
+
+# Share of the run's spend cap (MAX_RUN_COST_USD) that each tool-using agent may spend
+# before it has to answer. The rest pays for the orchestrator, panel, verdict and evaluator.
+budget_shares:
+  research: 0.30
+  worker: 0.15          # each of the pro and con workers
+
+worker_max_tool_calls: 12   # the STOP WHEN in each worker's brief
+
+# Stretch goals, off by default
+judge_votes: 1          # 3 runs each judge three times and takes the median score (triples the panel's cost)
+cache_dossiers: false   # true reuses the saved dossier when a philosopher is looked up again

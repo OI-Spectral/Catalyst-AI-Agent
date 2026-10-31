@@ -1,0 +1,17 @@
+# Virtual environment
+.venv/
+
+# Secrets (commit .env.example instead)
+.env
+google_credentials.json
+google_token.json
+
+# Run traces
+runs/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store
