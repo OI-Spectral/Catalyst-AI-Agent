@@ -15,7 +15,7 @@ Then open <http://localhost:8501>, type a name, and click **Get the verdict**. T
 
 ## What you get back
 
-The app shows the report on the page. **Save as a Google Doc** turns it into a Google Doc laid out like a Stanford Encyclopedia of Philosophy entry: a title and contents list, numbered sections, and superscript source numbers that link to the pages they come from. The doc holds only the essay and its sources. The run notes (route, rubric scores, warnings, cost) stay in a collapsed box under the report in the app, and in the terminal for the command line.
+The app shows the report on the page. **Save as a Google Doc** turns it into a Google Doc laid out formally: a title and contents list, numbered sections, and superscript source numbers that link to the pages they come from. The doc holds only the essay and its sources. The run notes (route, rubric scores, warnings, cost) stay in a collapsed box under the report in the app, and in the terminal for the command line.
 
 Every report has six sections:
 
@@ -294,45 +294,6 @@ Spot-check five reports by hand, in `runs/<run_id>/report.json`, to calibrate th
 
 ---
 
-## Project structure
-
-```text
-Catalyst-AI-Agent/
-├── README.md
-├── requirements.txt
-├── .env.example
-├── app.py                      # the Streamlit app: the default way to run it
-├── CLI.py                      # the same pipeline from the command line
-├── config/
-│   ├── routes.yaml             # route → prompt, allowlist, model
-│   ├── rubric.yaml             # evaluator criteria and thresholds
-│   └── settings.yaml           # models, panel weights, budget shares
-├── pipeline.py                 # runs the stages, enforces limits
-├── validity_gate.py            # 1. validity gate
-├── router.py                   # 2. router
-├── research.py                 # 2. research agent
-├── agent.py                    #    the tool loop the research agent and workers share
-├── tools.py                    #    search and fetch_page (allowlist enforced here)
-├── orchestrator.py             # 3. orchestrator + briefs
-├── workers.py                  # 3. pro / con workers
-├── panel.py                    # 4. judges + aggregator
-├── evaluator.py                # 5. evaluator loop
-├── report.py                   # report schema, assembly, Markdown and the run notes
-├── google_doc.py               # the report as a Google Doc, styled like an SEP entry
-├── baseline.py                 # the one-call baseline
-├── state.py                    # run_state.json, trace logging, spend cap and time limit
-├── llm.py, costs.py, settings.py
-├── evals/
-│   ├── cases.jsonl
-│   └── run_evals.py
-├── runs/                       # traces (gitignored)
-└── tests/                      # offline tests, no API calls
-```
-
-Each stage's output shape is a JSON schema next to the code that uses it, and its prompt is written there too.
-
----
-
 ## Getting started
 
 **Requirements:** Python 3.9+ and an Anthropic API key. The default search needs no key; Tavily or Brave need one.
@@ -433,60 +394,3 @@ python evals/run_evals.py --stage route
 # Offline tests, no API calls
 python -m unittest
 ```
-
----
-
-## Design notes
-
-**Why an orchestrator for only two workers?** With two fixed workers this is close to plain parallelization. The orchestrator earns its place through run-time decisions: which theory to debate, how to state it so both workers attack the same target, and whether to re-dispatch a worker. If evals show those decisions never vary, replace it with a code split.
-
-**Why does code compute the score?** Models are inconsistent at arithmetic and tend to anchor on their own prose. Computing the weighted score in code makes the verdict reproducible and lets the evaluator check that the text matches the number.
-
-**Why send feedback to one stage?** It's cheaper and faster, and sections that already pass stay stable between rounds.
-
-**Why structured findings instead of free text?** Free-text notes let the model talk itself into answers. Findings with a source, an excerpt and a status can be checked, cited and discounted.
-
----
-
-## Limitations
-
-- **Coverage bias.** Encyclopedias cover the Western canon in more depth, so some traditions get thinner dossiers. African philosophers are hit hardest: SEP and IEP usually discuss them only inside survey entries, which is why the `non_western` route adds Wikipedia, and Wikisource for primary texts. The eval set includes them to measure the gap.
-- **"Most famous" is contestable.** Early or late Wittgenstein? The report states why it picked the theory it did.
-- **The verdict is a structured opinion.** The criterion weights encode one view of what makes philosophy good. Change them in `settings.yaml` and the verdict changes.
-- **Graders can share blind spots.** A model grader may miss errors the generator makes; human spot-checks calibrate it.
-- **Cost.** A full run makes many more calls than the baseline: in the eval it cost about 19 times as much and took 6 times as long. For that, 8 more of 17 reports passed the rubric, and twice the share of citations checked out.
-
----
-
-## Roadmap
-
-**Week 1**
-- [x] Baseline: one prompt that writes the whole report
-- [x] First 10 eval cases with expected gate and route outcomes
-- [x] Validity gate: sanitise → lookup → model for borderline cases
-- [x] Router, `routes.yaml`, research agent with allowlisted `fetch_page`
-- [x] Trace logging to `runs/`
-
-**Week 2**
-- [x] Orchestrator, briefs, and pro/con workers with JSON schemas
-- [x] Judging panel and aggregator
-- [x] Evaluator loop with stop rules
-- [x] Streamlit demo
-- [x] Expand to 20 eval cases, run against baseline, fill in results
-
-**Stretch**
-- [x] Voting: run each judge three times and take the median (`judge_votes: 3` in `settings.yaml`)
-- [x] Cache dossiers for repeat lookups (`cache_dossiers: true` in `settings.yaml`)
-- [x] Head-to-head mode: compare two philosophers on the same criteria (`--versus`)
-
----
-
-## Acknowledgements
-
-Sources: the [Stanford Encyclopedia of Philosophy](https://plato.stanford.edu), the [Internet Encyclopedia of Philosophy](https://iep.utm.edu), [PhilPapers](https://philpapers.org), the [Perseus Digital Library](https://www.perseus.tufts.edu), [Early Modern Texts](https://www.earlymoderntexts.com), [Wikipedia](https://en.wikipedia.org), [Wikisource](https://en.wikisource.org) and [Wikidata](https://www.wikidata.org).
-
-Architecture patterns from Y/CS Catalyst Workshop 2 and Anthropic's *Building effective agents*.
-
-## License
-
-MIT
