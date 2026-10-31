@@ -6,14 +6,16 @@
 Built for Workshop 2 of **Y/CS Catalyst**, *Building Effective Agent Systems*.
 
 ```bash
-python CLI.py "Immanuel Kant"
+streamlit run app.py
 ```
+
+Then open <http://localhost:8501>, type a name, and click **Get the verdict**. To run it from the terminal instead, see [Command line](#command-line).
 
 ---
 
 ## What you get back
 
-Every report is a Google Doc laid out like a Stanford Encyclopedia of Philosophy entry: a title and contents list, numbered sections, and superscript source numbers that link to the pages they come from. The doc holds only the essay and its sources. The run notes (route, rubric scores, warnings, cost) stay in the terminal.
+The app shows the report on the page. **Save as a Google Doc** turns it into a Google Doc laid out like a Stanford Encyclopedia of Philosophy entry: a title and contents list, numbered sections, and superscript source numbers that link to the pages they come from. The doc holds only the essay and its sources. The run notes (route, rubric scores, warnings, cost) stay in a collapsed box under the report in the app, and in the terminal for the command line.
 
 Every report has six sections:
 
@@ -299,8 +301,8 @@ Catalyst-AI-Agent/
 ├── README.md
 ├── requirements.txt
 ├── .env.example
-├── CLI.py                      # command line entry point
-├── app.py                      # Streamlit demo
+├── app.py                      # the Streamlit app: the default way to run it
+├── CLI.py                      # the same pipeline from the command line
 ├── config/
 │   ├── routes.yaml             # route → prompt, allowlist, model
 │   ├── rubric.yaml             # evaluator criteria and thresholds
@@ -343,7 +345,13 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Fill in `.env`:
+Fill in `.env` (at least `ANTHROPIC_API_KEY`), then start the app:
+
+```bash
+streamlit run app.py
+```
+
+The `.env` settings:
 
 ```bash
 ANTHROPIC_API_KEY=
@@ -377,11 +385,24 @@ The report is written to a new Google Doc in your Drive. Setting this up takes a
 1. In the [Google Cloud console](https://console.cloud.google.com), create a project and enable the **Google Docs API**.
 2. Under **Google Auth Platform** (formerly the OAuth consent screen), set the audience to External and add your own Google account as a test user.
 3. Under **Clients**, create an OAuth client of type **Desktop app**. Download its JSON and save it as `google_credentials.json` in the project folder.
-4. Run `python CLI.py "Immanuel Kant"`. The first time, a browser asks you to allow access. The permission is `drive.file`: the app can create and edit only the documents it makes, and can't see anything else in your Drive. Your sign-in is saved to `google_token.json`.
+4. In the app, run a report and click **Save as a Google Doc**. The first time, a browser asks you to allow access. The permission is `drive.file`: the app can create and edit only the documents it makes, and can't see anything else in your Drive. Your sign-in is saved to `google_token.json`.
 
-Both files are gitignored; never commit them. Until this is set up, or with `--no-doc`, the essay prints in the terminal instead. In the Streamlit demo, **Save as a Google Doc** does the same.
+Both files are gitignored; never commit them. Until this is set up, the button shows these steps, and the command line prints the essay in the terminal instead.
 
-### Usage
+### Running the app
+
+`streamlit run app.py` starts a local web page at <http://localhost:8501>. It runs on your computer and stops when you press Ctrl+C in the terminal.
+
+1. Type a philosopher's name and click **Get the verdict**. A status box shows each stage as it starts. The search and page-fetch detail prints in the terminal where you started the app.
+2. If the name is ambiguous ("Bacon"), the page lists the philosophers it could mean. Click one to run it.
+3. When the report is ready, the page shows the weighted score, then the essay and its sources.
+4. Under the report, **Save as a Google Doc** creates the formatted doc and shows its link. **Run notes** opens the route, rubric scores, warnings and cost. **Download the report as JSON** saves the full report.
+
+A run costs about $0.25 to $1.40 (the cap is $5.00) and takes one to five minutes. Each run is saved in `runs/<run_id>/`.
+
+### Command line
+
+The same pipeline from the terminal. Here the report goes to a Google Doc automatically, and the run notes print in the terminal.
 
 ```bash
 # The report as a Google Doc, with the run notes in the terminal
@@ -398,10 +419,11 @@ python CLI.py "Nagarjuna" --trace
 
 # Head-to-head: two philosophers on the same criteria
 python CLI.py "Immanuel Kant" --versus "David Hume"
+```
 
-# Web demo
-streamlit run app.py
+### Evals and tests
 
+```bash
 # Run the eval set against the baseline (four cases at a time)
 python evals/run_evals.py --compare baseline --jobs 4
 
